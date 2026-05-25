@@ -13,6 +13,10 @@
 - CPU worker 数自动估算，也支持手动设置
 - Windows 一键 bootstrap，适合没有 Python 环境的新手
 
+## 演示
+
+[点击查看演示视频](docs/assets/demo.mp4)
+
 ## 快速开始
 
 第一次使用，打开 PowerShell：
