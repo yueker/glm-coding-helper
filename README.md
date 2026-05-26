@@ -2,8 +2,6 @@
 
 智谱 GLM Coding Plan 抢购助手，油猴脚本 / Tampermonkey 脚本 + 本地 CPU/GPU OCR 后端，用于 GLM Coding Plan 限时抢购、中文点选验证码自动识别、验证码自动点击、套餐按钮提前可点、限流重试和多窗口抢购辅助。
 
-如果你在搜索“智谱 GLM Coding Plan 抢购”“GLM Coding 抢购助手”“GLM Coding Plan 油猴脚本”“GLM Coding Plan 自动验证码”“GLM Coding Plan OCR”“智谱编程套餐抢购”，这个项目就是完整的一套前端油猴脚本 + 本地识别后端。
-
 默认使用作者内置折扣入口，可获得 95 折优惠；介意者可在脚本中自行替换入口参数。
 
 关键词：智谱、智谱清言、GLM Coding、GLM Coding Plan、GLM Coding Plan 抢购、智谱 GLM Coding 抢购、油猴脚本、Tampermonkey、本地 OCR、自动验证码、中文点选验证码、验证码自动点击、CPU OCR、GPU OCR、抢购助手、订阅助手。
