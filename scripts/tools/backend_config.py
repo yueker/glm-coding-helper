@@ -74,13 +74,29 @@ def _venv_python(name: str) -> Path:
     return ROOT / name / "bin" / "python"
 
 
-def detect_gpu(timeout: float = 8.0) -> tuple[bool, str]:
+def _gpu_probe_env() -> dict[str, str]:
+    env = os.environ.copy()
+    paddle_home = ROOT / ".paddle_home_gpu"
+    paddlex_cache = ROOT / ".paddlex_cache_gpu"
+    env["HOME"] = str(paddle_home)
+    env["USERPROFILE"] = str(paddle_home)
+    env["PADDLE_HOME"] = str(paddle_home / ".cache" / "paddle")
+    env["PADDLE_PDX_CACHE_HOME"] = str(paddlex_cache)
+    env.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
+def detect_gpu(timeout: float = 45.0) -> tuple[bool, str]:
     if parse_bool(os.environ.get("CNCAPTCHA_SKIP_GPU_DETECT"), False):
         return False, "skipped by CNCAPTCHA_SKIP_GPU_DETECT"
 
     gpu_python = _venv_python(".venv_paddle_gpu")
     if not gpu_python.exists():
         return False, f"missing {gpu_python}"
+
+    env = _gpu_probe_env()
 
     probe = (
         "import paddle; "
@@ -92,20 +108,60 @@ def detect_gpu(timeout: float = 8.0) -> tuple[bool, str]:
         proc = subprocess.run(
             [str(gpu_python), "-c", probe],
             cwd=str(ROOT),
+            env=env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout,
+            timeout=min(timeout, 10.0),
             check=False,
         )
     except Exception as exc:
         return False, f"probe failed: {exc}"
 
     output = (proc.stdout or "").strip()
-    if proc.returncode == 0 and output.startswith("ok"):
+    if not (proc.returncode == 0 and output.startswith("ok")):
+        reason = output or (proc.stderr or "").strip().splitlines()[-1:] or [f"returncode={proc.returncode}"]
+        return False, str(reason[0])
+
+    if not parse_bool(os.environ.get("CNCAPTCHA_STRICT_GPU_DETECT"), True):
         return True, output
-    reason = output or (proc.stderr or "").strip().splitlines()[-1:] or [f"returncode={proc.returncode}"]
-    return False, str(reason[0])
+
+    model_name = os.environ.get("CNCAPTCHA_GPU_OCR_MODEL", "PP-OCRv5_server_rec")
+    device = os.environ.get("CNCAPTCHA_GPU_OCR_DEVICE", "gpu:0")
+    engine = os.environ.get("CNCAPTCHA_GPU_OCR_ENGINE", "paddle_dynamic")
+    ocr_probe = (
+        "from paddleocr import TextRecognition; "
+        f"r = TextRecognition(model_name={model_name!r}, device={device!r}, engine={engine!r}); "
+        "close = getattr(r, 'close', None); "
+        "close() if callable(close) else None; "
+        "print('ocr_ok')"
+    )
+    try:
+        ocr_proc = subprocess.run(
+            [str(gpu_python), "-c", ocr_probe],
+            cwd=str(ROOT),
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"GPU OCR probe timeout after {timeout:.0f}s"
+    except Exception as exc:
+        return False, f"GPU OCR probe failed: {exc}"
+
+    if ocr_proc.returncode == 0 and "ocr_ok" in (ocr_proc.stdout or ""):
+        return True, output + "; ocr_ok"
+
+    reason_lines = [
+        line.strip()
+        for line in ((ocr_proc.stderr or "") + "\n" + (ocr_proc.stdout or "")).splitlines()
+        if line.strip()
+    ]
+    reason = reason_lines[-1] if reason_lines else f"returncode={ocr_proc.returncode}"
+    return False, f"GPU OCR unavailable: {reason}"
 
 
 def resolve_backend_config(source: str = "env") -> BackendConfig:

@@ -33,10 +33,11 @@ function Has-NvidiaGpu {
     return $LASTEXITCODE -eq 0
 }
 
-$Selected = $Target
-if ($Selected -eq "auto") {
-    $Selected = if (Has-NvidiaGpu) { "gpu" } else { "cpu" }
+$InstallTarget = $Target
+if ($InstallTarget -eq "auto") {
+    $InstallTarget = if (Has-NvidiaGpu) { "gpu" } else { "cpu" }
 }
+$StartMode = if ($Target -eq "auto") { "auto" } else { $InstallTarget }
 
 $CpuPython = Join-Path $Root ".venv_paddle\Scripts\python.exe"
 $GpuPython = Join-Path $Root ".venv_paddle_gpu\Scripts\python.exe"
@@ -44,7 +45,7 @@ $ImportCode = "import ultralytics, paddleocr, paddlex, cv2, PIL, numpy"
 
 $Ready = $false
 $SelectedPython = ""
-if ($Selected -eq "gpu") {
+if ($InstallTarget -eq "gpu") {
     $SelectedPython = $GpuPython
     $Ready = Test-PythonImports $GpuPython $ImportCode
 } else {
@@ -53,8 +54,8 @@ if ($Selected -eq "gpu") {
 }
 
 if (-not $Ready) {
-    Write-Host "Backend environment is missing or incomplete. Installing $Selected environment..."
-    $argsList = @("-Target", $Selected)
+    Write-Host "Backend environment is missing or incomplete. Installing $InstallTarget environment..."
+    $argsList = @("-Target", $InstallTarget)
     if ($SelectedPython -and (Test-Path $SelectedPython)) {
         Write-Host "Existing backend environment failed import checks. Recreating it..."
         $argsList += "-Recreate"
@@ -66,5 +67,15 @@ if (-not $Ready) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\bootstrap_windows.ps1" @argsList
 }
 
-Write-Host "Starting backend in $Selected mode on port $Port..."
-& powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_backend.ps1" -Mode $Selected -Port $Port
+if ($Target -eq "auto" -and $InstallTarget -eq "gpu" -and -not (Test-PythonImports $CpuPython $ImportCode)) {
+    Write-Host "CPU fallback environment is missing. Installing CPU environment for auto fallback..."
+    $fallbackArgs = @("-Target", "cpu")
+    foreach ($arg in $PipArg) {
+        $fallbackArgs += "-PipArg"
+        $fallbackArgs += $arg
+    }
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\bootstrap_windows.ps1" @fallbackArgs
+}
+
+Write-Host "Starting backend in $StartMode mode on port $Port..."
+& powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\start_backend.ps1" -Mode $StartMode -Port $Port

@@ -74,6 +74,20 @@ def smoke_test(py: Path, mode: str) -> None:
             "print('cuda_count=', paddle.device.cuda.device_count() if paddle.is_compiled_with_cuda() else 0)"
         )
         run([str(py), "-c", gpu_code])
+        gpu_ocr_code = (
+            "import os; "
+            f"os.environ['HOME'] = {str(ROOT / '.paddle_home_gpu')!r}; "
+            f"os.environ['USERPROFILE'] = {str(ROOT / '.paddle_home_gpu')!r}; "
+            f"os.environ['PADDLE_HOME'] = {str(ROOT / '.paddle_home_gpu' / '.cache' / 'paddle')!r}; "
+            f"os.environ['PADDLE_PDX_CACHE_HOME'] = {str(ROOT / '.paddlex_cache_gpu')!r}; "
+            "os.environ.setdefault('PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK', 'True'); "
+            "from paddleocr import TextRecognition; "
+            "r = TextRecognition(model_name='PP-OCRv5_server_rec', device='gpu:0', engine='paddle_dynamic'); "
+            "close = getattr(r, 'close', None); "
+            "close() if callable(close) else None; "
+            "print('gpu ocr ok')"
+        )
+        run([str(py), "-c", gpu_ocr_code])
 
 
 def check_assets() -> None:
