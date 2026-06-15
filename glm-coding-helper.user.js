@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         智谱 GLM Coding Plan 抢购助手 + 本地 OCR 自动验证码
 // @namespace    http://tampermonkey.net/
-// @version      8.18
+// @version      8.19
 // @description  GLM Coding Rush / 智谱 GLM Coding Plan 抢购助手，一键抢购油猴脚本 / Tampermonkey userscript，配合本地 CPU/GPU OCR 自动识别中文点选验证码并点击，支持多窗口并发、限流重试和支付页安全保护
 // @author       mumumi
 // @include      https://*bigmodel.cn/glm-coding*
@@ -611,14 +611,14 @@
         return 0;
     }
     function isRealBizId(id) { return id && !id.startsWith('debug-'); }
-    // ── v8.0: 黄金时间判断（9:30-10:10）──────────────────────────────────────
+    // ── v8.19: 黄金时间判断（9:30-11:00）────────────────────────────────────
     function isGoldenTime() {
         const now = new Date();
         const h = now.getHours();
         const m = now.getMinutes();
         const time = h * 60 + m;
         const start = 9 * 60 + 30;  // 9:30
-        const end = 10 * 60 + 10;   // 10:10
+        const end = 11 * 60 + 0;    // 11:00
         return time >= start && time <= end;
     }
     // ── DOM 访问 ──────────────────────────────────────────────────────────────
@@ -963,7 +963,7 @@
         sweepRestocks.sort((a, b) => a.msUntil - b.msUntil);
         const nearest = sweepRestocks[0];
         const sleep   = calcSleepMs(nearest.msUntil);
-        // ── v8.0: 黄金时间（9:30-10:10）禁止刷新页面 ──────────────────────────
+        // ── v8.19: 黄金时间（9:30-11:00）禁止刷新页面 ─────────────────────────
         if (isGoldenTime()) {
             setBar(`🔥 黄金时间！补货倒计时 <b>${fmt(nearest.msUntil)}</b>，禁止刷新，高频监控！`, '#ff4d4f');
             qIdx = 0; sweepRestocks = []; sweepBusyCount = 0; return;
