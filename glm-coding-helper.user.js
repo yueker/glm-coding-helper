@@ -1,7 +1,7 @@
 ﻿// ==UserScript==
 // @name         智谱 GLM Coding Plan 抢购助手 + 本地 OCR 自动验证码
 // @namespace    http://tampermonkey.net/
-// @version      22.4
+// @version      22.5
 // @description  GLM Coding Rush / 智谱 GLM Coding Plan 抢购助手，一键抢购油猴脚本 / Tampermonkey userscript，配合本地 CPU/GPU OCR 自动识别中文点选验证码并点击，支持多窗口并发、限流重试和支付页安全保护
 // @author       mumumi
 // @include      https://*bigmodel.cn/glm-coding*
@@ -564,8 +564,9 @@
         return sorted[Math.floor(sorted.length / 2)];
     }
     function computeRushReleaseAdvance(rttMs) {
-        const measured = Number.isFinite(rttMs) ? rttMs : 120;
-        return Math.max(40, Math.min(180, Math.round(measured / 2 + 20)));
+        if (!Number.isFinite(rttMs)) return 0;
+        const oneWay = Math.max(0, rttMs / 2);
+        return Math.max(0, Math.min(180, Math.round(oneWay - 20)));
     }
     async function calibrateRushLatency() {
         if (!CFG.RUSH_ENABLED) return;
@@ -961,7 +962,7 @@
                 <label style="display:flex;align-items:center;cursor:pointer">
                     <input type="checkbox" id="glm-re" ${CFG.RUSH_ENABLED ? 'checked' : ''} style="margin-right:8px">
                     <span style="font-size:14px;color:#555">冲刺模式（定时确认）</span>
-                    <span title="开启后，脚本只会在目标时间前最后 10 秒内自动点击订阅，并根据实测 RTT 保守提前释放验证码确定。目标窗口外不自动发起真实抢购请求。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
+                    <span title="开启后，脚本只会在目标时间前最后 10 秒内自动点击订阅，并根据实测 RTT 保守释放验证码确定：不早于预测安全点，不晚于目标时间。目标窗口外不自动发起真实抢购请求。" style="margin-left:6px;cursor:help;color:#999;font-size:14px;border:1px solid #ccc;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;line-height:1">?</span>
                 </label>
                 <div style="display:flex;align-items:center;gap:6px;padding-left:26px">
                     <span style="font-size:13px;color:#888">目标时间</span>
@@ -1277,7 +1278,7 @@
             const latencyRaw = GM_getValue('glm_rush_latency_v1', '{}');
             const latency = JSON.parse(latencyRaw || '{}');
             const latencyFresh = latency && Number.isFinite(Number(latency.advanceMs)) && Date.now() - Number(latency.at || 0) < 10 * 60 * 1000;
-            const releaseAdvanceMs = manualAdvance > 0 ? manualAdvance : (latencyFresh ? Math.max(40, Math.min(180, Number(latency.advanceMs))) : 80);
+            const releaseAdvanceMs = manualAdvance > 0 ? manualAdvance : (latencyFresh ? Math.max(0, Math.min(180, Number(latency.advanceMs))) : 0);
             return {
                 enabled: cfg.RUSH_ENABLED === true,
                 targetHour: Number.isFinite(ph) ? ph : 10,
@@ -1290,7 +1291,7 @@
                 pollTimeout: 20000,
             };
         } catch {
-            return { enabled: false, targetHour: 10, targetMin: 0, targetSec: 0, holdWindowMs: 10000, releaseAdvanceMs: 80, staggerMs: 2000, pollInterval: 50, pollTimeout: 20000 };
+            return { enabled: false, targetHour: 10, targetMin: 0, targetSec: 0, holdWindowMs: 10000, releaseAdvanceMs: 0, staggerMs: 2000, pollInterval: 50, pollTimeout: 20000 };
         }
     })();
     const CAPTCHA_CFG = (() => {
