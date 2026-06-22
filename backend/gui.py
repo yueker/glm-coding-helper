@@ -34,6 +34,12 @@ POLL_RECENT_MS = 500
 MAX_LOG_LINES = 500
 MAX_RECENT_SHOWN = 20
 BACKEND_SHUTDOWN_TIMEOUT = 30
+CONFIG_PATH = ROOT / "config.json"
+OCR_MODEL_CHOICES = {
+    "极速模式（v6 tiny，推荐）": "PP-OCRv6_tiny_rec",
+    "精准模式（v6 medium）": "PP-OCRv6_medium_rec",
+    "稳定模式（v5 server）": "PP-OCRv5_server_rec",
+}
 
 # 颜色
 BG = "#f0f2f5"
@@ -64,6 +70,31 @@ state = {
                "workers": 0, "n_yolo": 0, "n_ocr": 0, "port": BACKEND_PORT},
     "port": BACKEND_PORT,
 }
+
+
+def _load_config() -> dict:
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_config(updates: dict) -> None:
+    data = _load_config()
+    data.update(updates)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _ocr_model_label(model_name: str) -> str:
+    for label, value in OCR_MODEL_CHOICES.items():
+        if value == model_name:
+            return label
+    return f"自定义：{model_name}" if model_name else "未设置"
 
 
 def _read_proc_stdout(proc: subprocess.Popen):

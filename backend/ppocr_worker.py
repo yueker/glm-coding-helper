@@ -19,7 +19,11 @@ else:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-MODEL_NAME = "PP-OCRv5_server_rec"
+MODEL_NAME = (
+    os.environ.get("CNCAPTCHA_CPU_OCR_MODEL")
+    or os.environ.get("GLM_OCR_MODEL")
+    or "PP-OCRv6_tiny_rec"
+)
 ENGINE = "paddle_dynamic"
 CONSTRAINED_DECODE = True
 
@@ -72,6 +76,72 @@ def predict_with_candidate_scores_from_numpy(
         "ocr_score": float(scores[0] if scores else 0.0),
         "candidate_scores": candidate_scores,
     }
+
+
+def predict_batch_with_candidate_scores_from_numpy(
+    recognizer, np_imgs_bgr: list[np.ndarray], prompt: list[str]
+) -> list[dict]:
+    if not np_imgs_bgr:
+        return []
+    predictor = recognizer.paddlex_predictor
+    batch_imgs = predictor.pre_tfs["ReisizeNorm"](imgs=np_imgs_bgr)
+    x = predictor.pre_tfs["ToBatch"](imgs=batch_imgs)
+    batch_preds = predictor.runner(x=x)
+    probs = np.array(
+        batch_preds[0] if isinstance(batch_preds, (list, tuple)) else batch_preds
+    )
+    texts, scores = predictor.post_op(batch_preds)
+
+    rows = []
+    for idx, text in enumerate(texts):
+        candidate_scores = {}
+        for char in prompt:
+            char_idx = predictor.post_op.dict.get(char)
+            if char_idx is None or probs.ndim < 3 or idx >= probs.shape[0]:
+                candidate_scores[char] = 0.0
+            else:
+                candidate_scores[char] = float(probs[idx, :, char_idx].max())
+
+        best_char = (
+            max(candidate_scores, key=candidate_scores.get)
+            if candidate_scores
+            else first_cjk(str(text))
+        )
+        score = scores[idx] if idx < len(scores) else 0.0
+        rows.append(
+            {
+                "text": str(text),
+                "char": best_char,
+                "score": float(candidate_scores.get(best_char, score) or 0.0),
+                "ocr_text": str(text),
+                "ocr_score": float(score or 0.0),
+                "candidate_scores": candidate_scores,
+            }
+        )
+    return rows
+
+
+def predict_batch_plain_from_numpy(
+    recognizer, np_imgs_bgr: list[np.ndarray]
+) -> list[dict]:
+    if not np_imgs_bgr:
+        return []
+    predictor = recognizer.paddlex_predictor
+    batch_imgs = predictor.pre_tfs["ReisizeNorm"](imgs=np_imgs_bgr)
+    x = predictor.pre_tfs["ToBatch"](imgs=batch_imgs)
+    batch_preds = predictor.runner(x=x)
+    texts, scores = predictor.post_op(batch_preds)
+    rows = []
+    for idx, text in enumerate(texts):
+        score = scores[idx] if idx < len(scores) else 0.0
+        rows.append(
+            {
+                "text": str(text),
+                "char": first_cjk(str(text)),
+                "score": float(score or 0.0),
+            }
+        )
+    return rows
 
 
 def assign_prompt_globally(rows: list[dict], prompt: list[str]) -> list[dict]:
@@ -152,33 +222,53 @@ def run_ocr_worker_direct(core_id: int, req_queue, res_queue, ready_queue):
 
         chars = payload["chars"]
 
-        crop_bytes_list = payload["crop_bytes_list"]
-
-        t0 = time.perf_counter()
-        ocr_rows = []
-
-        for idx, img_bytes in enumerate(crop_bytes_list):
-            # Bytes -> PIL -> Numpy BGR
-            pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        if "crop_bytes" in payload:
+            t0 = time.perf_counter()
+            pil_img = Image.open(io.BytesIO(payload["crop_bytes"])).convert("RGB")
             np_img_bgr = np.array(pil_img, dtype=np.uint8)[:, :, ::-1]
-
             if CONSTRAINED_DECODE and chars:
                 row = predict_with_candidate_scores_from_numpy(
                     recognizer, np_img_bgr, list(chars)
                 )
             else:
-                predictor = recognizer.paddlex_predictor
-                batch_imgs = predictor.pre_tfs["ReisizeNorm"](imgs=[np_img_bgr])
-                x = predictor.pre_tfs["ToBatch"](imgs=batch_imgs)
-                batch_preds = predictor.runner(x=x)
-                texts, scores = predictor.post_op(batch_preds)
-                text = str(texts[0])
-                row = {
-                    "text": text,
-                    "char": first_cjk(text),
-                    "score": float(scores[0] if scores else 0.0),
+                row = predict_batch_plain_from_numpy(recognizer, [np_img_bgr])[0]
+            ocr_ms = (time.perf_counter() - t0) * 1000
+            res_queue.put(
+                {
+                    "partial": True,
+                    "req_id": req_id,
+                    "crop_index": int(payload.get("crop_index", 0)),
+                    "crop_total": int(payload.get("crop_total", 1)),
+                    "success": True,
+                    "row": row,
+                    "row_ocr_ms": round(ocr_ms, 1),
+                    "prompt": chars,
+                    "yolo_ms": round(payload.get("yolo_ms", 0.0), 1),
+                    "boxes": payload.get("boxes", []),
+                    "image_size": payload.get("image_size", [1, 1]),
+                    "reason": payload.get("reason", ""),
                 }
-            ocr_rows.append(row)
+            )
+            continue
+
+        crop_bytes_list = payload["crop_bytes_list"]
+
+        t0 = time.perf_counter()
+        ocr_rows = []
+        np_imgs_bgr = []
+
+        for idx, img_bytes in enumerate(crop_bytes_list):
+            # Bytes -> PIL -> Numpy BGR
+            pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            np_img_bgr = np.array(pil_img, dtype=np.uint8)[:, :, ::-1]
+            np_imgs_bgr.append(np_img_bgr)
+
+        if CONSTRAINED_DECODE and chars:
+            ocr_rows = predict_batch_with_candidate_scores_from_numpy(
+                recognizer, np_imgs_bgr, list(chars)
+            )
+        else:
+            ocr_rows = predict_batch_plain_from_numpy(recognizer, np_imgs_bgr)
 
         if CONSTRAINED_DECODE and chars and len(ocr_rows) == len(chars):
             ocr_rows = assign_prompt_globally(ocr_rows, chars)

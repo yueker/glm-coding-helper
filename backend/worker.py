@@ -95,16 +95,20 @@ def run_yolo_worker(core_id: int, req_queue, ocr_queue, ready_queue):
                 crop.save(buf, format="PNG")
                 crop_bytes_list.append(buf.getvalue())
 
-            # 裁剪结果直接通过 queue 传递（无共享内存）
-            ocr_queue.put({
-                "req_id": req_id,
-                "yolo_ms": yolo_ms,
-                "boxes": boxes,
-                "chars": chars,
-                "image_size": list(image.size),
-                "reason": reason,
-                "crop_bytes_list": crop_bytes_list,
-            })
+            # 每个 crop 独立投递，让多个 OCR worker 并行识别同一张验证码。
+            total = len(crop_bytes_list)
+            for crop_index, crop_bytes in enumerate(crop_bytes_list):
+                ocr_queue.put({
+                    "req_id": req_id,
+                    "crop_index": crop_index,
+                    "crop_total": total,
+                    "yolo_ms": yolo_ms,
+                    "boxes": boxes,
+                    "chars": chars,
+                    "image_size": list(image.size),
+                    "reason": reason,
+                    "crop_bytes": crop_bytes,
+                })
 
         except Exception as e:
             import traceback

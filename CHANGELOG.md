@@ -1,5 +1,14 @@
 # 修复历史
 
+## 2026-06-23
+
+- 发布用户脚本 v23.3：修复自动点击订阅后干等到 15 秒超时的问题。之前点击订阅后，若合成 click 事件没触发智谱前端弹验证码（按钮 DOM 已就绪但前端状态机还没准备好），主流程会一直停在 WAITING 干等到 `MODAL_WAIT=15000` 超时，浪费抢购黄金窗口。现在用"验证码 iframe 是否已拿到新 prompt+背景图"作为信号：iframe 脚本每次拿到新验证码（prompt 或背景图变化）时让 GM 计数器 `glm_captcha_seen_seq` 自增，主流程点击时记下基线，WAITING 阶段比对——计数器增长了说明验证码已弹出，耐心等识别；1.5 秒还没增长说明点击没触发验证码，立即回 IDLE 重试点订阅。计数器只增不减、无残留、无时序错乱。
+
+## 2026-06-22
+
+- 后端 OCR 模型升级到 PP-OCRv6_tiny_rec（默认）。379 张真实验证码端到端测试：准确率仍 100%（379/379），单张耗时从 `PP-OCRv5_server_rec` 的约 1189ms 降到约 83ms（本机 AMD Ryzen 5 3600），快约 14 倍。i5-1340P 等大小核 CPU 上 8 秒/张的问题随之消除。模型可通过 `config.json` 的 `ocr_model` 或环境变量 `CNCAPTCHA_CPU_OCR_MODEL`/`GLM_OCR_MODEL` 覆盖。要求 `paddleocr>=3.7.0`。
+- 修复 pipeline CPU 后端验证码识别变慢的问题：之前同一张验证码的 3 个裁剪字图会被同一个 OCR worker 串行识别，使用 `PP-OCRv5_server_rec` 时容易达到 2s+；现在 YOLO worker 将每个 crop 拆成独立 OCR 任务，server 收齐 partial 后再聚合坐标，多个 OCR worker 可并行处理同一张验证码。实测本机 5 张样本从约 2.0-2.3s 降到约 1.19-1.22s，仍使用原 server_rec 模型，不降低识别稳定性。
+
 ## 2026-06-21
 
 - 发布用户脚本 v23.2：修复腾讯验证码“换图不换题”场景下 OCR 只触发一次的问题。`captchaSession` 现在同时记录 `payloadText` 和 `bgUrl`，背景图变化时也会复位发送锁。

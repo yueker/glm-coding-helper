@@ -3,9 +3,9 @@ numpy==2.3.5
 opencv-contrib-python==4.10.0.84
 scipy
 ultralytics
-paddlepaddle==3.3.1
-paddleocr==3.5.0
-paddlex==3.5.2
+paddlepaddle>=3.3.1
+paddleocr>=3.7.0
+paddlex>=3.7.0
 pyclipper==1.4.0
 shapely==2.1.2
 pyautogui; sys_platform == "win32"
