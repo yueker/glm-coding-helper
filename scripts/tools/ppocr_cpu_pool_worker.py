@@ -13,7 +13,7 @@ import numpy as np
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODEL_NAME = os.environ.get("CNCAPTCHA_CPU_OCR_MODEL", "PP-OCRv5_server_rec")
+MODEL_NAME = os.environ.get("CNCAPTCHA_CPU_OCR_MODEL", "PP-OCRv6_tiny_rec")
 ENGINE = os.environ.get("CNCAPTCHA_CPU_OCR_ENGINE", "paddle_dynamic")
 WORKERS = int(os.environ.get("CNCAPTCHA_CPU_OCR_WORKERS", "3"))
 CACHE_NAME = os.environ.get("CNCAPTCHA_CPU_PADDLEX_CACHE", ".paddlex_cache_cpu")
